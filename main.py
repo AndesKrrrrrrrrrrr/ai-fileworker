@@ -6,6 +6,8 @@ from pathlib import Path
 from openai import OpenAI
 import pathspec
 
+PROJECT_NAME = "ai-fileworker"
+
 
 class Config(TypedDict, total=False):
     api_key: str
@@ -22,7 +24,7 @@ def load_config(config_filename: str = "config.yaml") -> Config:
     config_path = Path(config_filename)
     if not config_path.exists():
         xdg_config_home = Path(os.getenv("XDG_CONFIG_HOME", "~/.config")).expanduser()
-        config_path = xdg_config_home / config_filename
+        config_path = xdg_config_home / PROJECT_NAME / config_filename
 
     # Load config from file if it exists
     config: Config = {}
@@ -43,11 +45,14 @@ def load_config(config_filename: str = "config.yaml") -> Config:
     for config_key, env_var in env_var_mapping.items():
         env_value = os.getenv(env_var)
 
-        # Special handling for boolean conversion (for 'in_place')
-        if config_key == "in_place" and env_value is not None:
-            config[config_key] = env_value.lower() in ["true", "1", "yes"]
-        else:
-            config[config_key] = env_value or config.get(config_key)
+        # Special handling for boolean conversion
+        if config_key in ("in_place", "is_verbose"):
+            env_value = (
+                (str(env_value).lower() in ("yes", "true", "1", "on"))
+                if env_value is not None
+                else None
+            )
+        config[config_key] = env_value or config.get(config_key)
 
     # Set default values if not provided in config or environment
     config.setdefault("model", "gpt-4-turbo")
@@ -73,18 +78,22 @@ def process_file(file_path: str, config: Config) -> None:
     with open(file_path, "r") as file:
         file_content = file.read()
 
+    ai_args = {
+        "messages": [
+            {"role": "system", "content": action},
+            {
+                "role": "user",
+                "content": f"{file_content}\n\n# Please only return the modified file content, and nothing else.",
+            },
+        ],
+        "model": model,
+        "stream": not in_place,
+    }
+
+    chat_completion = client.chat.completions.create(**ai_args)
+
     if in_place:
         # If editing in-place, just get the result without streaming
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": action},
-                {
-                    "role": "user",
-                    "content": f"{file_content}\n\n# Please only return the modified file content, and nothing else.",
-                },
-            ],
-            model=model,
-        )
         output = (chat_completion.choices[0].message.content or "").strip()
 
         # Write the output back to the file (in-place modification)
@@ -93,17 +102,7 @@ def process_file(file_path: str, config: Config) -> None:
         print(f"Updated file: {file_path}")
     else:
         # Stream output to stdout
-        response = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": action},
-                {
-                    "role": "user",
-                    "content": f"{file_content}\n\n# Please only return the modified code, with no additional explanations or preface.",
-                },
-            ],
-            model=model,
-            stream=True,
-        )
+        response = client.chat.completions.create(**ai_args)
         print(f"Output for {file_path}:")
         for chunk in response:
             chunk_content = chunk.choices[0].delta.content or ""
@@ -176,6 +175,8 @@ def main():
         config["action"] = args.action
     if args.api_base_url:
         config["api_base_url"] = args.api_base_url
+    if args.in_place is not None:
+        config["in_place"] = args.in_place
 
     # Get OpenAI settings from config
     model = config.get("model")
@@ -201,7 +202,8 @@ def main():
             ]
 
         file_paths.extend(matched_files)
-    print(f"Found {len(file_paths)} files to process")
+    print(f"Found {len(file_paths)} files to process: {file_paths}")
+    args.file_paths = file_paths
 
     # Process each file
     for file_path in args.file_paths:
