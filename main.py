@@ -1,8 +1,10 @@
-from typing import Any, TypedDict, Union
+from typing import TypedDict, Union
+import glob
 import os
 import yaml
 from pathlib import Path
 from openai import OpenAI
+import pathspec
 
 
 class Config(TypedDict, total=False):
@@ -153,17 +155,52 @@ def parse_cli_args():
     return parser.parse_args()
 
 
+def get_gitignore_spec():
+    """Load gitignore rules and return a pathspec for filtering."""
+    if os.path.exists(".gitignore"):
+        with open(".gitignore", "r") as gitignore:
+            return pathspec.PathSpec.from_lines("gitwildmatch", gitignore)
+    return None
+
+
 def main():
     args = parse_cli_args()
 
     # Load configuration
     config = load_config(args.config)
 
-    # Override action or API base URL from CLI arguments if provided
     if args.action:
+        # Handle action input (if not provided via CLI, prompt the user)
+        args.action = args.action or input("Enter the action you want to perform: ")
         config["action"] = args.action
     if args.api_base_url:
         config["api_base_url"] = args.api_base_url
+
+    # Get OpenAI settings from config
+    model = config.get("model")
+    api_key = config.get("api_key")
+
+    if not model or not api_key:
+        print("Error: Config file must include both 'model' and 'api_key'.")
+        return
+
+    # Initialize gitignore pathspec (if a .gitignore exists)
+    gitignore_spec = get_gitignore_spec()
+
+    # Expand file paths from globs (recursively), excluding git-ignored files
+    file_paths = []
+    print(f"Scanning files: {args.file_paths}")
+    for file_pattern in args.file_paths:
+        matched_files = glob.glob(file_pattern, recursive=True)
+
+        # If gitignore rules exist, filter out ignored files
+        if gitignore_spec:
+            matched_files = [
+                f for f in matched_files if not gitignore_spec.match_file(f)
+            ]
+
+        file_paths.extend(matched_files)
+    print(f"Found {len(file_paths)} files to process")
 
     # Process each file
     for file_path in args.file_paths:
