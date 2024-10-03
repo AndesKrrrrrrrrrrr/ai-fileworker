@@ -30,18 +30,12 @@ file globbing and respects `.gitignore` rules.
    pip install -r requirements.txt
    ```
 
-3. **(Optional) Install `PyInstaller`**:
-
-   To create a standalone binary:
-
-   ```bash
-   pip install pyinstaller
-   ```
-
-4. **Create a binary** (optional):
+3. **Create a binary and copy to your bin directory**:
 
    ```bash
    pyinstaller --onefile main.py
+   : "${BIN_DIR:-~/.local/bin}"
+   cp ./dist/main "${BIN_DIR}/"
    ```
 
 ## Usage
@@ -109,4 +103,3 @@ export OPENAI_MODEL="gpt-4"
 
 This project is licensed under the MIT License.
 See the [LICENSE](LICENSE) file for details.
-
