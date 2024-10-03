@@ -1,2 +1,2 @@
 model: "gpt-4-turbo"
-api_key: "your-openai-api-key-here"
+api_key: "your-openai-api-key-here" # Or export as environment variable
