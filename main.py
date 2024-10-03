@@ -50,7 +50,7 @@ def load_config(config_filename: str = "config.yaml") -> Config:
             config[config_key] = env_value or config.get(config_key)
 
     # Set default values if not provided in config or environment
-    config.setdefault("model", "gpt-3.5-turbo")
+    config.setdefault("model", "gpt-4-turbo")
     config.setdefault("api_base_url", "https://api.openai.com/v1")
     config.setdefault("action", "Summarize this text")
 
@@ -136,6 +136,7 @@ def parse_cli_args():
     parser.add_argument(
         "--in-place",
         "-i",
+        "-w",
         action="store_true",
         help="Edit the files in-place instead of printing the output",
     )
