@@ -1,0 +1,5 @@
+dist/
+build/
+.venv
+config.yaml
+main.spec
